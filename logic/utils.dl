@@ -4,7 +4,18 @@
 //self define relation
 
 // Utils
+// SubClass：存的是class关系，不只是父类，包括父父类等
 .decl SubClass(subclass:Class, class:Class)
+SubClass(subclass, class) :- DirectSuperclass(subclass, class).
+SubClass(subclass, class) :- DirectSuperinterface(subclass, class).
+SubClass(subclass, class) :-
+    (
+        DirectSuperclass(subclass, tmp);
+        DirectSuperinterface(subclass, tmp)
+    ),
+    SubClass(tmp, class).
+
+// SubEqClass：目前不知道干嘛用，相当于当前类+父类关系
 .decl SubEqClass(subeqclass:Class, class:Class)
 
 SubEqClass("byte", "byte").
@@ -13,26 +24,28 @@ SubEqClass("byte[]", "byte[]").
 SubEqClass(subclass, class) :- SubClass(subclass, class).
 SubEqClass(class, class) :- ClassType(class).
 
-SubClass(subclass, class) :- DirectSuperclass(subclass, class).
-SubClass(subclass, class) :- DirectSuperinterface(subclass, class).
-SubClass(subclass, class) :- 
-    (
-        DirectSuperclass(subclass, tmp);
-        DirectSuperinterface(subclass, tmp)
-    ),
-    SubClass(tmp, class).
-
+// AbstractType：抽象类
 .decl AbstractType(type:Class)
 
 AbstractType(type) :- 
     ClassModifier("abstract", type).
 
+// Dispatch 全称是Method Dispatch（方法派发）：运行时刻解析调用点所调用的目标方法的过程
+// 与MethodInfo 的区别是MethodInfo 不剧本父类的
 .decl Dispatch(simplename:symbol, descriptor:symbol, class:Class, method:Method)
 
+// 1. 初始化
+// a. MethodInfo 当然是
+// b. 为什么抽象方法不行？因为抽象类不能实例化，所以也其抽象方法也不行，不可能存在直接调用
 Dispatch(simplename, descriptor, class, method) :-
     MethodInfo(method, simplename, _, class, _, descriptor, _),
     !MethodModifier("abstract", method).
 
+// 2. 关联父类相关method
+//  a. 当前类不存在该method
+//  b. 当前类class 存在superclass
+//  c. superclass 有method。疑问：这句改成MethodInfo可以吗？
+//  d. 该method 非abstract
 Dispatch(simplename, descriptor, class, method) :-
     !MethodInfo(_, simplename, _, class, _, descriptor, _),
     DirectSuperclass(class, superclass),

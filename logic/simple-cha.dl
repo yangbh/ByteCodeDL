@@ -1,23 +1,30 @@
 #pragma once
 #include "utils.dl"
 
+// EntryPoint：入口点，一般在应用时定义
 .decl EntryPoint(simplename:symbol, descriptor:symbol, class:Class)
+// Reachable：从入口点，能够调用到的方法，包含该method和对应的步数
 .decl Reachable(method:Method, step:number)
+// SinkDesc：就是SinkMethod，知不是分成了class和simple那么来表示，和SinkMethod的method一个意思，看用法一般是在应用定义
 .decl SinkDesc(simplename:symbol, class:Class)
+// SinkMethod：Sink方法，Method 是method.facts 第一个字段，类似method signature
 .decl SinkMethod(method:Method)
+// EntryMethod：入口方法
 .decl EntryMethod(method:Method)
+// CallGraph：调用关系，caller为调用方method，callee为被调用method，todo insn？
+.decl CallGraph(insn:Insn, caller:Method, callee:Method)
+// SimpleCallGraph：todo
+.decl SimpleCallGraph(insn:Insn, caller:Method, callee:Method)
+// ChaGraph：todo
+.decl ChaGraph(caller:Method, implementation:Method, callee:Method)
+
+// BanCaller: 禁用，java.util类的相关方法
 .decl BanCaller(method:Method)
+.output BanCaller
 
 BanCaller(method) :-
     MethodInfo(method, simplename, _, class, _, _, _),
     contains("java.util", class).
-
-.output BanCaller
-
-
-.decl CallGraph(insn:Insn, caller:Method, callee:Method)
-.decl SimpleCallGraph(insn:Insn, caller:Method, callee:Method)
-.decl ChaGraph(caller:Method, implementation:Method, callee:Method)
 
 SinkMethod(method) :-
     SinkDesc(simplename, class),

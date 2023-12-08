@@ -1,71 +1,134 @@
 #pragma once
 #include "utils.dl"
 
+// 建立一个Component，主要是为了解决命名冲突
 .comp ContextInsensitivePt{
+    // 表示 var 变量 指向 heap 这个对象
     .decl VarPointsTo(heap:Heap, var:Var)
+    // 表示 baseHeap 这个对象的field 指向 heap 这个对象
     .decl InstanceFieldPointsTo(heap:Heap, baseHeap:Heap, field:Field)
+    // 表示 静态 field 指向 heap 这个对象
     .decl StaticFieldPointsTo(heap:Heap, field:Field)
+    // 表示 baseHeap数组中，包含了heap对象
     .decl ArrayIndexPointsTo(heap:Heap, baseHeap:Heap)
+    // 表示 在insn指令中 caller 调用了 callee
     .decl CallGraph(insn:Insn, caller:Method, callee:Method)
+    // 表示 方法可访问到
     .decl Reachable(method:Method)
 
     // new
+    // 如果 method 方法可访问
+    // 且 在method中，将创建号的heap对象赋值给了var变量
+    // 那么能够推导出 var变量指向 heap 对象
     VarPointsTo(heap, var) :-
         Reachable(method),
+        // 表示在method中，var = new heap()
         AssignHeapAllocation(_, _, heap, var, method, _).
     
     // assign
-    VarPointsTo(heap, to) :- 
+    // 如果method 方法可访问
+    // 且form 变量 指向 heap 对象
+    // 在method中，将from变量赋值给了to 即 to=form
+    // 那么能够推导出 to变量也指向了该heap 对象
+    VarPointsTo(heap, to) :-
         Reachable(method),
         VarPointsTo(heap, from),
+        // 局部变量赋值，表示在method中，to=from
         AssignLocal(_, _, from, to, method).
     
     // cast
-    VarPointsTo(heap, to) :- 
+    // 如果method 方法可访问
+    // 且form 变量 指向 heap 对象
+    // 且在method 中，将from变量类型转换后赋值给了to 即 to=(T)from
+    // 那么能够推导出to 变量也指向heap 对象
+    VarPointsTo(heap, to) :-
         Reachable(method),
+        // 表示在inMethod中，to = (type) from
         AssignCast(_, _, from, to, _, method),
         VarPointsTo(heap, from).
     
     // load field
+    // 如果method 方法可访问
+    // 且 在method中，将base变量的field取出赋值给了to 也就是 to=base.field
+    // 且 base 指向 baseHeap 对象
+    // 且 baseHeap对象的field指向 heap 对象
+    // 那么能够推到出 to 也指向 heap 对象
     VarPointsTo(heap, to) :-
         Reachable(method),
+        // 表示在method 方法中，to = base.field
         LoadInstanceField(_, _, to, base, field, method),
         VarPointsTo(baseHeap, base),
+        // baseHeap 这个对象的field 指向 heap 这个对象
         InstanceFieldPointsTo(heap, baseHeap, field).
     
     // store field
+    // 如果method 方法可访问
+    // 且 在method中，将from存到了变量base的field，也就是base.field=from
+    // 且 from 指向 heap 对象
+    // 且 base 指向 baseHeap 对象
+    // 那么 能够推到出baseHeap对象的field也指向 heap 对象
     InstanceFieldPointsTo(heap, baseHeap, field) :-
         Reachable(method),
+        // 在method中，base.field = from
         StoreInstanceField(_, _, from, base, field, method),
         VarPointsTo(heap, from),
         VarPointsTo(baseHeap, base).
     
     // load staic field
+    // 如果method 方法可访问
+    // 且 在method中，将静态field取出赋值给了to 即 to = T.field
+    // 且 field 指向 heap 对象
+    // 那么可以推导出 to 也指向 heap 对象
     VarPointsTo(heap, to) :-
         Reachable(method),
+        // 同上，to=base.field，base相当于是固定的，field已经有class信息，因此没有base
         LoadStaticField(_, _, to, field, method),
+        // 静态 field 指向 heap 这个对象
         StaticFieldPointsTo(heap, field).
     
     // store static field
+    // 如果method 方法可访问
+    // 且在method中，将from存入静态field 即 T.field = from
+    // 且 from 指向 heap 对象
+    // 那么可以推到出 静态field指向 heap 对象
     StaticFieldPointsTo(heap, field) :-
         Reachable(method),
+        // 同上，base.field = from，base相当于是固定的，field已经有class信息，因此没有base
         StoreStaticField(_, _, from, field, method),
         VarPointsTo(heap, from).
     
     // load from array
+    // 如果method可访问
+    // 且 从base数组中取出元素到to to = base[i]
+    // 且 base 指向 baseHeap 数组对象
+    // 且 baseHeap 数组对象中 包含 heap 对象
+    // 那么 to 可能指向 heap
+    // 这里的实现未区分取第几个索引
+    // 会造成什么问题呢？todo，猜测会造成误报
     VarPointsTo(heap, to) :-
         Reachable(method),
+        // 在method中，to = base[x]
         LoadArrayIndex(_, _, to, base, method),
         VarPointsTo(baseHeap, base),
+        // baseHeap数组中，包含了heap对象，未区分位置
         ArrayIndexPointsTo(heap, baseHeap).
 
     // store into array
+    // 如果method可访问
+    // 将 form 存到 base 数组中 即 base[i] = from
+    // from 指向 heap 对象
+    // base 指向 baseHeap 数组对象
+    // 那么能推导出 baseHeap 数组对象 包含 heap 对象
     ArrayIndexPointsTo(heap, baseHeap) :-
         Reachable(method),
+        // 在method中，base[x] = from
         StoreArrayIndex(_, _, from, base, method),
         VarPointsTo(heap, from),
         VarPointsTo(baseHeap, base).
-    
+
+    // 下面开始涉及到过程间的指针分析
+    // 先构造调用图
+    // Special 和 Static 和 CHA 处理方式一样，编译时callee就确定，不需要再进行解析
     Reachable(callee),
     CallGraph(insn, caller, callee) :- 
         Reachable(caller),
@@ -75,10 +138,19 @@
     CallGraph(insn, caller, callee) :- 
         Reachable(caller),
         StaticMethodInvocation(insn, _, callee, caller).
-    
+
+    // Virtual Call 需要根据 base 指向 对象 的类型 进行 dispatch
+    // caller 要可达
+    // 在caller 中 virtual call 了 method
+    // 调用时 base 指向 baseHeap 对象
+    // baseHeap 对象的类型 为 class
+    // 根据method 解析出 被调函数的签名
+    // 通过 函数签名 和 实际类型 解析出真正的被调函数callee
+    // 注意这里和CHA 不一样的逻辑，CHA是通过类关系来定位具体method的，这里是通过调用者base的类型class，定位具体的method
     Reachable(callee),
     CallGraph(insn, caller, callee) :- 
         Reachable(caller),
+        // 在caller中，通过指令insn，调用了base.callee()，base是var
         VirtualMethodInvocation(insn, _, method, base, caller),
         VarPointsTo(baseHeap, base),
         NormalHeap(baseHeap, class),
@@ -86,7 +158,12 @@
         Dispatch(simplename, descriptor, class, callee).
     
     // param
-    VarPointsTo(heap, param) :- 
+    // 调用图中存在调用 insn
+    // 调用时第n个实际参数传的是 变量 arg
+    // 被调函数 callee 的 第 n 个 形式参数是 param
+    // 如果 arg 指向了heap 对象
+    // 那么 param 也指向heap 对象
+    VarPointsTo(heap, param) :-
         CallGraph(insn, _, callee),
         ActualParam(n, insn, arg),
         FormalParam(n, callee, param),
@@ -94,14 +171,25 @@
         NormalHeap(heap, _).
     
     // return
-    VarPointsTo(heap, return) :- 
+    // 调用图中存在调用 insn
+    // 如果 在callee中，返回语句返回的是var变量
+    // 调用后的返回值赋值给了return变量
+    // var 变量 指向 heap 对象
+    // 那么 return 也指向 heap 对象
+    VarPointsTo(heap, return) :-
         CallGraph(insn, _, callee),
+        // callee的函数内返回的变量为var
         Return(_, _, var, callee),
+        // 表示在调用insn返回时，将返回结果赋值给return变量
         AssignReturnValue(insn, return),
         VarPointsTo(heap, var).
     
     // this
-    VarPointsTo(heap, this) :- 
+    // 调用图中存在调用 insn
+    // 调用时 base 指向 heap
+    // 那么调用时callee 的 this 变量 也指向 heap 对象
+    // eg. 某一行insn：base.method()，base 对应heap，那么method内部的this也指向heap
+    VarPointsTo(heap, this) :-
         CallGraph(insn, _, callee),
         (
             VirtualMethodInvocation(insn, _, _, base, _);

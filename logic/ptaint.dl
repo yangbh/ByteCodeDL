@@ -1,21 +1,32 @@
 #pragma once
 #include "pt-noctx.dl"
 
+// todo 继承 ContextInsensitivePt
 .comp PTaint : ContextInsensitivePt{
 
+    // 污点分析相关的新relation
+    // 表示通过insn指令，创建的新的污点对象heap，包括污点源的生成，以及污点转移时的生成
     .decl TaintHeap(insn:Insn, heap:Heap)
+    // 表示source函数，其返回值表示污点源
     .decl SourceMethod(method:Method)
+    // 表示sink函数，其第n个实际参数如果指向污点对象，则表示可能存在安全风险
     .decl SinkMethod(method:Method, n:number)
-
+    // 表示sanitize函数，经过其处理的污点，将不再是污点，也就是说污点无法通过sanitize传播，是在实际参数向形式参数传播时阻断的
     .decl SanitizeMethod(method:Method)
-
+    // 污点转移相关规则，一般人工配置
+    // base 是 污点 返回值也是污点，
     .decl BaseToRetTransfer(method:Method)
+    // 参数是污点返回也是污点
     .decl ArgToRetTransfer(method:Method, n:number)
+    // 将上面两个合并成一个，或者将污点转移抽象成from变量污染了to变量
     .decl IsTaintedFrom(insn:Insn, from:Var, to:Var)
+    // heap 对象 污染了 newHeap对象
     .decl TransferTaint(heap:Heap, newHeap:Heap)
-    
-    
+
     // taint arg to param
+    // 阻止污点对象传播到sanitize函数的形式参数
+    // 这里与指针分析析不同，需要加上非 SanitizeMethod
+    // 疑问：todo 这里同时存在这个规则，会怎么处理？
     VarPointsTo(heap, param) :-
         CallGraph(insn, _, callee),
         ActualParam(n, insn, arg),
@@ -23,8 +34,12 @@
         VarPointsTo(heap, arg),
         TaintHeap(_, heap),
         !SanitizeMethod(callee).
-    
-    
+
+    // 针对 to = xxx.callee()
+    // 如果
+    // 1. callee 是source方法
+    // 2. callee 在可达callgraph 内
+    // 那么ins 和heap 加入污点TaintHeap，to 也指向污点VarPointsTo
     TaintHeap(insn, heap),
     VarPointsTo(heap, to) :-
         SourceMethod(callee),
@@ -32,21 +47,39 @@
         AssignReturnValue(insn, to),
         heap = cat("NewTainted::", insn).
 
+    // 针对 insn: ret = base.callee()
+    // 其中1. callee 可以将污点从调用者转移至ret
+    // 2. base 是virtual 或者special 调用
+    // 3. callee 在CallGraph内，是可达的
+    // 那么：认为污点ret是从base传播而来
     IsTaintedFrom(insn, base, ret) :-
         CallGraph(insn, _, callee),
+        // BaseToRetTransfer 表示污点可以从base 传播至ret
         BaseToRetTransfer(callee),
         (
             VirtualMethodInvocation(insn, _, _, base, _);
             SpecialMethodInvocation(insn, _, _, base, _)
         ),
         AssignReturnValue(insn, ret).
-    
+
+    // 针对 insn: ret = xxx.callee(arg)
+    // 其中1. callee 第n个参数arg，可以将污点传播至ret
+    // 那么：认为污点ret是从参数arg传播而来
     IsTaintedFrom(insn, arg, ret) :-
         CallGraph(insn, _, callee),
+        // ArgToRetTransfer 表示污点可以从参数 传播至ret
         ArgToRetTransfer(callee, n),
         ActualParam(n, insn, arg),
         AssignReturnValue(insn, ret).
 
+    // insn: to = from
+    // 如果 1. 污点从from 传播至to
+    // 2. 污点from 对应的值为 heap
+    // 3. to 原本对应的值为oldHeap，不一定是污点
+    // 4. oldHeap 来自 var = new oldHeap()
+    // 那么：1. to指向新的污点 newHeap，newHeap 生成规则如下
+    // 2. 污点充heap 传播至了newHeap
+    // 3. var 的值可以是newHeap
     TaintHeap(insn, newHeap),
     TransferTaint(heap, newHeap),
     VarPointsTo(newHeap, var) :-
@@ -55,5 +88,7 @@
         TaintHeap(_, heap),
         newHeap = cat("TransferTaint::", insn),
         VarPointsTo(oldHeap, to),
+        // 创建对象赋值
+        // 表示在inMethod中，var = new oldHeap()
         AssignHeapAllocation(_, _, oldHeap, var, _, _).
 }

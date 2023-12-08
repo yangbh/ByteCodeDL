@@ -1,107 +1,191 @@
 #pragma once
 
+// 指令 可以定位出动作（比如call,load,sotre,assign）发生时的代码位置
 .type Insn <: symbol
+// 变量
 .type Var <: symbol
+// 堆 也可以理解为内存中的对象
 .type Heap <: symbol
+// 字段
 .type Field <: symbol
+// 方法
 .type Method <: symbol
+// 类
 .type Class <: symbol
 
 // load data from facts
 // class
 
+// 类修饰符
+// mod：修饰符，eg. void / public / final / private ，多个对应多条
+// class: 类, 注意内部类和匿名类，eg. java.lang.Process / java.util.IdentityHashMap$1 / java.security.KeyStore$Entry$Attribute
 .decl ClassModifier(mod:symbol, class:Class)
 .input ClassModifier
 
+// 非接口类
+// class: 类，同上
 .decl ClassType(class:Class)
 .input ClassType
 
+// 接口类
 .decl InterfaceType(interface:Class)
 .input InterfaceType
 
+// 应用类，是出现在待分析的应用中还是在第三方库中，同soot可以通过isApplication 判断是否是应用类相似
 .decl ApplicationClass(class:Class)
 .input ApplicationClass
 
+// 直接父类
 .decl DirectSuperclass(child:Class, parent:Class)
 .input DirectSuperclass
 
+// 直接接口实现
 .decl DirectSuperinterface(child:Class, parent:Class)
 .input DirectSuperinterface
 
-// method 
+// method
 
+// 方法基本信息
+// method: 方法signature，eg. <java.lang.Process: void <init>()>
+// simplename: 方法名，eg <init>
+// param: 参数，格式为参数类型对应的class，用逗号分隔，eg. / sun.net.sdp.SdpProvider$Action,java.net.InetAddress,int,int,int
+// class: 类名，eg. java.lang.Process
+// return: 返回，eg. void / java.lang.String
+// jvmDescriptor: jvm描述符，与param表示一个意思，格式不一样，eg. (Lsun/net/sdp/SdpProvider$Action;Ljava/net/InetAddress;III)V
+// arity: 参数格式
 .decl MethodInfo(method:Method, simplename:symbol, param:symbol, class:Class, return:Class, jvmDescriptor:symbol, arity:number)
 .input MethodInfo(IO=file, filename="Method.facts", delimiter="\t")
 
+// 方法的修饰符
+// mod: 修饰符，eg. void / int, abstract，注意如果同时存在void abstract，那么是两条记录
+// method: 同上，method signature
 .decl MethodModifier(mod:symbol, method:Method)
 .input MethodModifier(IO=file, filename="Method-Modifier.facts", delimiter="\t")
 
+// 方法对应的this变量
+// mthod：
+// this:Var ：变量
 .decl ThisVar(method:Method, this:Var)
 .input ThisVar
 
+// 方法的形式参数，注意与实际参数的区别
+// n: 参数位置
+// method: 同上
+// param:Var:
 .decl FormalParam(n:number, method:Method, param:Var)
 .input FormalParam
 
+// 方法的返回值，表示method的函数内返回的变量为var
+// insn: signature，eg. <java.lang.Process: boolean isAlive()>/return/1
+// index: todo 不确定具体含义，可能指的是jimple概念的行数？
+// var: method的函数内返回的变量为var，eg. <java.lang.Process: boolean isAlive()>/$numconstant0
+// method: 同上
 .decl Return(insn:Insn, index:number, var:Var, method:Method)
 .input Return
 
+// virtual调用
+// 表示在caller中，通过指令insn，调用了receiver.callee()
 .decl VirtualMethodInvocation(insn:Insn, index:number, callee:Method, receiver:Var, caller:Method)
 .input VirtualMethodInvocation
 
+// 静态调用
+// 表示在caller中，通过指令insn调用了静态方法callee
 .decl StaticMethodInvocation(insn:Insn, index:number, callee:Method, caller:Method)
 .input StaticMethodInvocation
 
+// 特殊调用，包括private，super，以及构造函数
+// 表示在caller中，通过指令insn，调用了receiver.callee()
 .decl SpecialMethodInvocation(insn:Insn, index:number, callee:Method, receiver:Var, caller:Method)
 .input SpecialMethodInvocation
 
+// 注意这里少了DynamicMethodInvocation，动态调用，反射之类的
+
+// 实参 ，eg. 在java.lang.Process#waitFor 中调用了java.lang.Math.min方法，$numconstant1 参数对应其第一个参数
+// n: 参数位置，eg. 0
+// insn: signature，eg. <java.lang.Process: boolean waitFor(long,java.util.concurrent.TimeUnit)>/java.lang.Math.min/0
+// var: 赋值的参数，eg. <java.lang.Process: boolean waitFor(long,java.util.concurrent.TimeUnit)>/$numconstant1
 .decl ActualParam(n:number, insn:Insn, var:Var)
 .input ActualParam
 
+// 方法调用返回值，eg. waitFor中调用Math.min这个方法返回值对应 waitFor中的$stack23变量
+// insn: <java.lang.Process: boolean waitFor(long,java.util.concurrent.TimeUnit)>/java.lang.Math.min/0
+// var: <java.lang.Process: boolean waitFor(long,java.util.concurrent.TimeUnit)>/$stack23
 .decl AssignReturnValue(insn:Insn, var:Var)
 .input AssignReturnValue
 
 // Field
 
+// 类属性信息
+// field: Field，eg. <java.util.HashMap: int size>
+// declaringType: eg. java.util.HashMap
+// simplename: eg. size
+// type: int
 .decl FieldInfo(field:Field, declaringType:Class, simplename:symbol, type:Class)
 .input FieldInfo(IO=file, filename="Field.facts", delimiter="\t")
 
+// 类属性修饰符，同上
 .decl FieldModifier(modifier:symbol, field:Field)
 .input FieldModifier(IO=file, filename="Field-Modifier.facts", delimiter="\t")
 
+// 加载类属性，load，表示在inMethod方法中，var = base.field
+// insn:
+// index:
+// var:
+// base:
+// field:
+// inMethod:
 .decl LoadInstanceField(insn:Insn, index:number, var:Var, base:Var, field:Field, inMethod:Method)
 .input LoadInstanceField
 
+// 存储类属性，save，表示在inMethod中，base.field = var
 .decl StoreInstanceField(insn:Insn, index:number, var:Var, base:Var, field:Field, inMethod:Method)
 .input StoreInstanceField
 
+// 加载类静态属性，同上，base相当于是固定的，field已经有class信息，因此没有base
 .decl LoadStaticField(insn:Insn, index:number, var:Var, field:Field, inMethod:Method)
 .input LoadStaticField
 
+// 同上
 .decl StoreStaticField(insn:Insn, index:number, var:Var, field:Field, inMethod:Method)
 .input StoreStaticField
 
 // Array
+// 从数组中读，表示在inMethod中，to = array[]
 .decl LoadArrayIndex(insn:Insn, index:number, to:Var, array:Var, inMethod:Method)
 .input LoadArrayIndex
 
+// 往数组中写，表示在inMethod中，array[] = from
 .decl StoreArrayIndex(insn:Insn, index:number, from:Var, array:Var, inMethod:Method)
 .input StoreArrayIndex
 
+// 数组中的元素类型
+// 表示arrayType中元素的类型为componentType
 .decl ComponentType(arrayType:Class, componentType:Class)
 .input ComponentType
 
 // others
+
+// 变量的声明类型
+// 表示变量var的声明类型为class
 .decl VarType(var:Var, class:Class)
 .input VarType(IO=file, filename="Var-Type.facts", delimiter="\t")
 
+// 局部变量赋值
+// 表示在inMethod中，to = from
 .decl AssignLocal(insn:Insn, index:number, from:Var, to:Var, inMethod: Method)
 .input AssignLocal
 
+// 类型转换
+// 表示在inMethod中，to = (type) from
 .decl AssignCast(insn:Insn, index:number, from:Var, to:Var, type:Class, inMethod:Method)
 .input AssignCast(IO=file, filename="AssignCast.facts", delimiter="\t")
 
+// 创建对象赋值
+// 表示在inMethod中，var = new heap()
 .decl AssignHeapAllocation(insn:Insn, index:number, heap:Heap, var:Var, inMethod:Method, linenumber:number)
 .input AssignHeapAllocation
 
+// 堆中对象对应的类型
+// 表示heap的类型为class
 .decl NormalHeap(value:Heap, class:Class)
 .input NormalHeap
